@@ -1,6 +1,6 @@
 package view_test
 import (
-	"github.com/orivil/view"
+	"gopkg.in/orivil/view.v0"
 	"log"
 	"fmt"
 	"os"
