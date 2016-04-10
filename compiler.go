@@ -97,6 +97,8 @@ func (s *Compiler) readLayout(content []byte) error {
 
 var endsectionPatten = regexp.MustCompile(`@endsection\s*$`)
 var sectionPatten = regexp.MustCompile(`@section\(["']([\w]+)["']\)([\s\S]+)@endsection`)
+var prefixPatten = regexp.MustCompile(`^[\s\n]*`)
+var suffixPatten = regexp.MustCompile(`[\s\n]*$`)
 
 func (s *Compiler) findSections(content []byte) {
 	// auto add close tag
@@ -108,15 +110,18 @@ func (s *Compiler) findSections(content []byte) {
 	result := sectionPatten.FindAllSubmatch(content, -1)
 	if len(result) > 0 {
 		name := string(result[0][1])
-		matchedStr := result[0][2]
+		matched := result[0][2]
+		matched = prefixPatten.ReplaceAll(matched, []byte{})
+		matched = suffixPatten.ReplaceAll(matched, []byte{})
+
 		// get first section
-		index := bytes.Index(matchedStr, []byte("@endsection"))
+		index := bytes.Index(matched, []byte("@endsection"))
 		if index == -1 {
-			s.sections[name] = matchedStr
+			s.sections[name] = matched
 		} else {
-			s.sections[name] = matchedStr[0: index]
+			s.sections[name] = matched[0: index]
 			// find next section
-			s.findSections(matchedStr[index:])
+			s.findSections(matched[index:])
 		}
 	}
 }
