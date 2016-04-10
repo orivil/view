@@ -24,16 +24,12 @@ func ExampleCompiler() {
 
 	fmt.Println(string(content))
 
-	// the test was failed, but result just like this
-
 	// Output:
 	// <layout>
 	//     <bar></bar>
-	//
 	//     <index>
 	//         {{.}}
 	//     </index>
-	//
 	// </layout>
 }
 
@@ -51,16 +47,12 @@ func ExampleContainer() {
 		log.Fatal(err)
 	}
 
-	// the test was failed, but result just like this
-
 	// Output:
 	// <layout>
 	//     <bar></bar>
-	//
 	//     <index>
 	//         hello world!
 	//     </index>
-	//
 	// </layout>
 }
 
@@ -74,6 +66,7 @@ func ExampleSetTplHandle() {
 	container.SetTplHandle(func(newTpl *template.Template) {
 		// add a function
 		newTpl.Funcs(map[string]interface{}{
+
 			"sum": func(i...int) int {
 				sum := 0
 				for _, a := range i {
@@ -84,15 +77,14 @@ func ExampleSetTplHandle() {
 		})
 	})
 
-	// 3. display
 	data := 28
-	err := container.Display(os.Stdout, dir, "functest", data)
+	viewFile := "functest" // "./testdata/functest.blade.php"
+	// 3. display
+	err := container.Display(os.Stdout, dir, viewFile, data)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// the right result is 46, this "460" is for see the the right result
-
 	// Output:
-	// 460
+	// 46
 }
