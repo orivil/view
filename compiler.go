@@ -1,3 +1,9 @@
+// Copyright 2016 orivil Authors. All rights reserved.
+// Use of this source code is governed by a MIT-style
+// license that can be found in the LICENSE file.
+
+// Package view provide a file compiler for merge layout files to one file, and
+// also provide a template container for cache the templates.
 package view
 
 import (
@@ -44,7 +50,7 @@ func (s *Compiler) getFileContent(file []byte) ([]byte, error) {
 	return ioutil.ReadFile(filepath.Join(s.dir, string(file) + s.ext))
 }
 
-var includePatten = regexp.MustCompile(`@include\(["']([\w\/\.]+)["']\)`)
+var includePatten = regexp.MustCompile(`@include\(["']([\w\/\.\-\_]+)["']\)`)
 
 func (s *Compiler) compileInclude(content []byte) ([]byte, error) {
 	result := includePatten.FindAllSubmatch(content, -1)
@@ -79,7 +85,7 @@ func (s *Compiler) merge() ([]byte, error) {
 	return s.compileInclude(s.layout)
 }
 
-var extendsPatten = regexp.MustCompile(`^\s*@extends\(["']([\w\/\.]+)["']\)`)
+var extendsPatten = regexp.MustCompile(`^\s*@extends\(["']([\w\/\.\-\_]+)["']\)`)
 
 // read section extends layout file name and get the layout content
 func (s *Compiler) readLayout(content []byte) error {
