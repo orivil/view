@@ -4,7 +4,6 @@ import (
 	"html/template"
 	"sync"
 	"io"
-	"path/filepath"
 )
 
 type Container struct {
@@ -15,9 +14,7 @@ type Container struct {
 	rwmu  *sync.RWMutex
 }
 
-// NewContainer
-//
-// debug: if debug is true, compiler will always read file from disk
+// if debug is true, combiner will always read file from disk,
 // otherwise it will cache the file
 func NewContainer(debug bool, ext string) *Container {
 
@@ -40,19 +37,42 @@ func (this *Container) Clear() {
 	this.tpls = make(map[string]*template.Template, 15)
 }
 
-func (this *Container) Display(w io.Writer, dir, file string, data interface{}) error {
+type Page struct {
+	Dir string
+	File string
+}
 
-	var name string = filepath.Join(dir, file)
+func NewPage(dir, file string) Page {
+	return Page{Dir: dir, File: file}
+}
+
+func (this *Container) Display(w io.Writer, data interface{}, ps ...Page) error {
+
+	var bn []byte
+	for _, s := range ps {
+		bn = append(bn, []byte(s.Dir)...)
+		bn = append(bn, []byte(s.File)...)
+	}
+	name := string(bn)
 	this.rwmu.RLock()
 	tpl, ok := this.tpls[name]
 	this.rwmu.RUnlock()
 	if ok {
 		return tpl.Execute(w, data)
 	} else {
-		c := NewCompiler(dir, this.ext)
-		html, err := c.Compile(file)
-		if err != nil {
-			return err
+		var pages = make([][]byte, len(ps))
+		var html []byte
+		for idx, s := range ps {
+			html, err := Combine(string(s.Dir), string(s.File), this.ext)
+			if err != nil {
+				return err
+			}
+			pages[idx] = html
+		}
+		if len(pages) > 1 {
+			html = MergeHtml(pages)
+		} else {
+			html = pages[0]
 		}
 		this.rwmu.Lock()
 		defer this.rwmu.Unlock()
@@ -60,7 +80,7 @@ func (this *Container) Display(w io.Writer, dir, file string, data interface{}) 
 		if this.handler != nil {
 			this.handler(tpl)
 		}
-		tpl, err = tpl.Parse(string(html))
+		tpl, err := tpl.Parse(string(html))
 		if err != nil {
 			return err
 		}
