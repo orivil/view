@@ -126,9 +126,7 @@ func ExampleMergeHtml() {
 
 	// the merged file was just like "./testdata/htmls/output/merged.html"
 	result, _ := ioutil.ReadFile("./testdata/htmls/output/merged.html")
-	isEqual := bytes.Equal(buffer.Bytes(), result)
-	fmt.Println(isEqual)
-
+	fmt.Println(bytes.Equal(buffer.Bytes(), result))
 	// Output:
 	// true
 }

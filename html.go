@@ -59,7 +59,8 @@ var headTags = []Tag{
 	},
 }
 
-// update default head tag or add some new tags
+// Update default head tag or add some new tags, only registered tag and it's attribute can
+// be merged.
 func SetHeadTags(tag ...Tag) {
 	for _, t := range tag {
 		_append := true
