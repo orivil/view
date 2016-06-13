@@ -4,6 +4,8 @@ import (
 	"html/template"
 	"sync"
 	"io"
+	"path/filepath"
+	"bytes"
 )
 
 type Container struct {
@@ -14,8 +16,8 @@ type Container struct {
 	rwmu  *sync.RWMutex
 }
 
-// if debug is true, combiner will always read file from disk,
-// otherwise it will cache the file
+// If debug is true, combiner will always read view file from disk,
+// otherwise it will cache the Template objects.
 func NewContainer(debug bool, ext string) *Container {
 
 	return &Container{
@@ -31,7 +33,7 @@ func (this *Container) SetTplHandle(handler func(tpl *template.Template)) {
 	this.handler = handler
 }
 
-// Clear for clear all cache
+// Clear all cache
 func (this *Container) Clear() {
 
 	this.tpls = make(map[string]*template.Template, 15)
@@ -48,12 +50,13 @@ func NewPage(dir, file string) Page {
 
 func (this *Container) Display(w io.Writer, data interface{}, ps ...Page) error {
 
-	var bn []byte
+	buf := bytes.NewBuffer(nil)
 	for _, s := range ps {
-		bn = append(bn, []byte(s.Dir)...)
-		bn = append(bn, []byte(s.File)...)
+		buf.WriteString(s.Dir)
+		buf.WriteRune(filepath.Separator)
+		buf.WriteString(s.File)
 	}
-	name := string(bn)
+	name := buf.String()
 	this.rwmu.RLock()
 	tpl, ok := this.tpls[name]
 	this.rwmu.RUnlock()
