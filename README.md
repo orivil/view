@@ -23,4 +23,3 @@ https://github.com/orivil/view/graphs/contributors
 ## License
 
 Released under the [MIT License](https://github.com/orivil/view/blob/master/LICENSE).
-

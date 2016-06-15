@@ -134,6 +134,28 @@ var mergeData = [][]byte{
 
 	[]byte(`<!DOCTYPE html>
 <html>
+<body class="class-4">
+</body>
+<script>
+    script-4
+</script>
+</html>`),
+
+	[]byte(`<!DOCTYPE html>
+<html>
+<script>
+    script-5
+</script>
+</html>`),
+
+	[]byte(`<!DOCTYPE html>
+<html>
+<body class="class-6">
+</body>
+</html>`),
+
+	[]byte(`<!DOCTYPE html>
+<html>
 <head>
     <title>title-3</title>
     <link rel="stylesheet" href="/local-1.css"/>
@@ -150,6 +172,10 @@ var mergeData = [][]byte{
 </div>
 <div class="class-3">
 </div>
+<div class="class-4">
+</div>
+<div class="class-6">
+</div>
 </body>
 <script>
     script-1
@@ -160,18 +186,24 @@ var mergeData = [][]byte{
 <script>
     script-3
 </script>
+<script>
+    script-4
+</script>
+<script>
+    script-5
+</script>
 </html>`),
 }
 
 func TestMergeHtml(t *testing.T) {
-	result := view.MergeHtml(mergeData[0:3])
-	if !bytes.Equal(result, mergeData[3]) {
-		t.Error("got:", result, "expect:", mergeData[3])
+	result := view.MergeHtml(mergeData[0:6])
+	if !bytes.Equal(result, mergeData[6]) {
+		t.Error("got:", string(result), "expect:", mergeData[6])
 	}
 }
 
 func BenchmarkMergeHtml(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		view.MergeHtml(mergeData[0:3])
+		view.MergeHtml(mergeData[0:6])
 	}
 }
