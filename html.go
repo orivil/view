@@ -22,6 +22,7 @@ var headTags = []Tag{
 			"name",
 			"http-equiv",
 			"content",
+			"charset",
 		},
 	},
 
@@ -59,21 +60,10 @@ var headTags = []Tag{
 	},
 }
 
-// Update default head tag or add some new tags, only registered tag and it's attribute can
-// be merged.
-func SetHeadTags(tag ...Tag) {
-	for _, t := range tag {
-		_append := true
-		for idx, dt := range headTags {
-			if dt.Name == t.Name {
-				headTags[idx] = t
-				_append = false
-			}
-		}
-		if _append {
-			headTags = append(headTags, t)
-		}
-	}
+// SetDefaultHeadTags replaces default head tags and attributes.
+func SetDefaultHeadTags(tags []Tag) {
+
+	headTags = tags
 }
 
 // MergeHtml merges multiple html pages into one single page.
@@ -116,19 +106,23 @@ func MergeHtml(pages [][]byte) []byte {
 			for section.Next(func(content []byte, attr map[string]string) {
 				priority++
 				current := (idx << 8) + priority
-				m := []byte("<" + tag.Name)
+				buf := bytes.NewBuffer(nil)
+				buf.WriteString("<")
+				buf.WriteString(tag.Name)
 				for _, a := range tag.Attr {
 					kv := mergeAttr(attr, a)
-					m = append(m, kv...)
+					buf.Write(kv)
 				}
 				if tag.HasContent {
-					m = append(m, byte('>'))
-					m = append(m, content...)
-					m = append(m, []byte("</" + tag.Name + ">")...)
+					buf.WriteRune('>')
+					buf.Write(content)
+					buf.WriteString("</")
+					buf.WriteString(tag.Name)
+					buf.WriteRune('>')
 				} else {
-					m = append(m, []byte("/>")...)
+					buf.WriteString("/>")
 				}
-				aStr := string(m)
+				aStr := buf.String()
 				// cover the same value
 				if headCache[tag.Name] == nil {
 					headCache[tag.Name] = map[string]int{aStr: current}
@@ -137,14 +131,16 @@ func MergeHtml(pages [][]byte) []byte {
 				}
 			}) {}
 		}
-
 	}
 
+	buffer := bytes.NewBuffer(nil)
 	// read the last title
 	doc := pages[titleIndex]
-	doc = doc[:bytes.Index(doc, []byte("</title>")) + 8]
-	buffer := bytes.NewBuffer(nil)
-	// write last "title" file like "<!DOCTYPE html>...</title>" into buffer
+	part := doc[:bytes.Index(doc, []byte("<head>")) + 6]
+	// write start file like "<!DOCTYPE html><head>" into buffer
+	buffer.Write(part)
+	doc = doc[bytes.Index(doc, []byte("<title>")): bytes.Index(doc, []byte("</title>")) + 8]
+	// write the last title "<title>...</title>" into buffer
 	buffer.Write(doc)
 
 	// write all head tags into buffer
@@ -238,6 +234,11 @@ func (s *section) Next(success func(tagContent []byte, attr map[string]string)) 
 		var nextStart int
 		startContent := s.page[start:]
 		close := bytes.Index(startContent, []byte(">"))
+		if close > 1 {
+			if startContent[close-1] == '/' {
+				close--
+			}
+		}
 		attrStart := 1 + s.tagLen // "<tag "
 		if attrStart < close {
 			attr = getAttr(startContent[attrStart:close])
@@ -260,24 +261,22 @@ func (s *section) Next(success func(tagContent []byte, attr map[string]string)) 
 
 func getAttr(n []byte) (attr map[string]string) {
 
-	var start, end int
 	a := TrimHtmlSpace(n)
 	kvs := strings.Split(string(a), " ")
 	attr = make(map[string]string, len(kvs))
 	for _, kv := range kvs {
-		kvSlice := strings.Split(kv, "=")
-		if len(kvSlice) == 1 {
-			attr[kvSlice[0]] = ""
+		firstEq := strings.Index(kv, "=")
+
+		if firstEq == -1 {
+			attr[kv] = ""
 		} else {
-			v := kvSlice[1]
-			start = strings.Index(v, `"`)
-			if start == -1 {
-				start = strings.Index(v, `'`)
-				end = strings.LastIndex(v, `'`)
-			} else {
-				end = strings.LastIndex(v, `"`)
+			key := kv[:firstEq]
+			start := firstEq + 2 // ="..."
+			end := len(kv) - 1
+			if start < end {
+				val := kv[start: end]
+				attr[key] = val
 			}
-			attr[kvSlice[0]] = v[start + 1:end]
 		}
 	}
 	return
