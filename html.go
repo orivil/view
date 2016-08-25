@@ -2,7 +2,6 @@ package view
 
 import (
 	"bytes"
-	"strings"
 	"unicode"
 	"gopkg.in/orivil/sorter.v0"
 )
@@ -22,6 +21,7 @@ var headTags = []Tag{
 			"name",
 			"http-equiv",
 			"content",
+			"charset",
 		},
 	},
 
@@ -59,21 +59,11 @@ var headTags = []Tag{
 	},
 }
 
-// Update default head tag or add some new tags, only registered tag and it's attribute can
-// be merged.
-func SetHeadTags(tag ...Tag) {
-	for _, t := range tag {
-		_append := true
-		for idx, dt := range headTags {
-			if dt.Name == t.Name {
-				headTags[idx] = t
-				_append = false
-			}
-		}
-		if _append {
-			headTags = append(headTags, t)
-		}
-	}
+// SetDefaultHeadTags replaces default head tags and their attributes.
+// Only registered tags and their attributes can be merged.
+func SetDefaultHeadTags(tags []Tag) {
+
+	headTags = tags
 }
 
 // MergeHtml merges multiple html pages into one single page.
@@ -89,15 +79,15 @@ func MergeHtml(pages [][]byte) []byte {
 	// get all sections
 	for idx, p := range pages {
 		// get all heads
-		head, _ := GetFirstSection(p, "head")
+		head, _ := getFirstSection(p, "head")
 		heads[idx] = head
 
 		// get all body
-		body := GetFirstSectionWithTag(p, "body")
+		body := getFirstSectionWithTag(p, "body")
 		bodies[idx] = body
 
 		// get all script
-		ss := NewSection(p[len(body) + len(head):], "script")
+		ss := newSection(p[len(body) + len(head):], "script")
 		for ss.NextWithTag(func(tagContent []byte) {
 			scripts[idx] = append(scripts[idx], tagContent)
 		}) {}
@@ -111,24 +101,28 @@ func MergeHtml(pages [][]byte) []byte {
 		}
 		// format "<head>...</head>"
 		for _, tag := range headTags {
-			section := NewSection(h, tag.Name)
+			section := newSection(h, tag.Name)
 			priority := 0
 			for section.Next(func(content []byte, attr map[string]string) {
 				priority++
 				current := (idx << 8) + priority
-				m := []byte("<" + tag.Name)
+				buf := bytes.NewBuffer(nil)
+				buf.WriteString("<")
+				buf.WriteString(tag.Name)
 				for _, a := range tag.Attr {
 					kv := mergeAttr(attr, a)
-					m = append(m, kv...)
+					buf.Write(kv)
 				}
 				if tag.HasContent {
-					m = append(m, byte('>'))
-					m = append(m, content...)
-					m = append(m, []byte("</" + tag.Name + ">")...)
+					buf.WriteRune('>')
+					buf.Write(content)
+					buf.WriteString("</")
+					buf.WriteString(tag.Name)
+					buf.WriteRune('>')
 				} else {
-					m = append(m, []byte("/>")...)
+					buf.WriteString("/>")
 				}
-				aStr := string(m)
+				aStr := buf.String()
 				// cover the same value
 				if headCache[tag.Name] == nil {
 					headCache[tag.Name] = map[string]int{aStr: current}
@@ -137,14 +131,17 @@ func MergeHtml(pages [][]byte) []byte {
 				}
 			}) {}
 		}
-
 	}
 
+	buffer := bytes.NewBuffer(nil)
 	// read the last title
 	doc := pages[titleIndex]
-	doc = doc[:bytes.Index(doc, []byte("</title>")) + 8]
-	buffer := bytes.NewBuffer(nil)
-	// write last "title" file like "<!DOCTYPE html>...</title>" into buffer
+	part := doc[:bytes.Index(doc, []byte("<head>")) + 6]
+	// write start file like "<!DOCTYPE html><head>" into buffer
+	buffer.Write(part)
+	buffer.WriteString("\n    ")
+	doc = doc[bytes.Index(doc, []byte("<title>")): bytes.Index(doc, []byte("</title>")) + 8]
+	// write the last title "<title>...</title>" into buffer
 	buffer.Write(doc)
 
 	// write all head tags into buffer
@@ -198,12 +195,12 @@ type section struct {
 	tagLen int
 }
 
-func NewSection(page []byte, tag string) *section {
+func newSection(page []byte, tag string) *section {
 	return &section{page: page, tag: tag, tagLen: len(tag)}
 }
 
-func GetFirstSection(page []byte, tag string) (content []byte, attr map[string]string) {
-	s := NewSection(page, tag)
+func getFirstSection(page []byte, tag string) (content []byte, attr map[string]string) {
+	s := newSection(page, tag)
 	s.Next(func(tagContent []byte, att map[string]string) {
 		content = tagContent
 		attr = att
@@ -211,8 +208,8 @@ func GetFirstSection(page []byte, tag string) (content []byte, attr map[string]s
 	return
 }
 
-func GetFirstSectionWithTag(page []byte, tag string) (tagContent []byte) {
-	s := NewSection(page, tag)
+func getFirstSectionWithTag(page []byte, tag string) (tagContent []byte) {
+	s := newSection(page, tag)
 	s.NextWithTag(func(tag []byte) {
 		tagContent = tag
 	})
@@ -238,6 +235,11 @@ func (s *section) Next(success func(tagContent []byte, attr map[string]string)) 
 		var nextStart int
 		startContent := s.page[start:]
 		close := bytes.Index(startContent, []byte(">"))
+		if close > 1 {
+			if startContent[close-1] == '/' {
+				close--
+			}
+		}
 		attrStart := 1 + s.tagLen // "<tag "
 		if attrStart < close {
 			attr = getAttr(startContent[attrStart:close])
@@ -260,25 +262,55 @@ func (s *section) Next(success func(tagContent []byte, attr map[string]string)) 
 
 func getAttr(n []byte) (attr map[string]string) {
 
-	var start, end int
 	a := TrimHtmlSpace(n)
-	kvs := strings.Split(string(a), " ")
-	attr = make(map[string]string, len(kvs))
-	for _, kv := range kvs {
-		kvSlice := strings.Split(kv, "=")
-		if len(kvSlice) == 1 {
-			attr[kvSlice[0]] = ""
-		} else {
-			v := kvSlice[1]
-			start = strings.Index(v, `"`)
-			if start == -1 {
-				start = strings.Index(v, `'`)
-				end = strings.LastIndex(v, `'`)
-			} else {
-				end = strings.LastIndex(v, `"`)
-			}
-			attr[kvSlice[0]] = v[start + 1:end]
+
+	attr = make(map[string]string)
+	left := a
+	var key, value []rune
+	for {
+		key, left = readKey(left)
+		if len(left) <= 1 {
+			attr[string(key)] = ""
+			return
 		}
+		value, left = readValue(left)
+		attr[string(key)] = string(value)
+		if len(left) <= 1 {
+			return
+		}
+	}
+
+	return
+}
+
+func readKey(s []rune) (key []rune, left []rune) {
+	if s[0] == ' ' { // cut the first space
+		s = s[1:]
+	}
+	for _, b := range s {
+		if b == '=' || b == ' ' {
+			left = s[len(key):]
+			break
+		} else {
+			key = append(key, rune(b))
+		}
+	}
+	return
+}
+
+func readValue(s []rune) (value []rune, left []rune) {
+	if len(s)>2 && string(s[0:2]) == `="` {
+		s = s[2:]
+		for _, b := range s {
+			if b == '"' {
+				left = s[len(value) + 1:] // cut the last `"`
+				break
+			} else {
+				value = append(value, rune(b))
+			}
+		}
+	} else {
+		left = s
 	}
 	return
 }
