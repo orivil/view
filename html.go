@@ -2,7 +2,6 @@ package view
 
 import (
 	"bytes"
-	"strings"
 	"unicode"
 	"gopkg.in/orivil/sorter.v0"
 )
@@ -60,7 +59,8 @@ var headTags = []Tag{
 	},
 }
 
-// SetDefaultHeadTags replaces default head tags and attributes.
+// SetDefaultHeadTags replaces default head tags and their attributes.
+// Only registered tags and their attributes can be merged.
 func SetDefaultHeadTags(tags []Tag) {
 
 	headTags = tags
@@ -79,15 +79,15 @@ func MergeHtml(pages [][]byte) []byte {
 	// get all sections
 	for idx, p := range pages {
 		// get all heads
-		head, _ := GetFirstSection(p, "head")
+		head, _ := getFirstSection(p, "head")
 		heads[idx] = head
 
 		// get all body
-		body := GetFirstSectionWithTag(p, "body")
+		body := getFirstSectionWithTag(p, "body")
 		bodies[idx] = body
 
 		// get all script
-		ss := NewSection(p[len(body) + len(head):], "script")
+		ss := newSection(p[len(body) + len(head):], "script")
 		for ss.NextWithTag(func(tagContent []byte) {
 			scripts[idx] = append(scripts[idx], tagContent)
 		}) {}
@@ -101,7 +101,7 @@ func MergeHtml(pages [][]byte) []byte {
 		}
 		// format "<head>...</head>"
 		for _, tag := range headTags {
-			section := NewSection(h, tag.Name)
+			section := newSection(h, tag.Name)
 			priority := 0
 			for section.Next(func(content []byte, attr map[string]string) {
 				priority++
@@ -139,6 +139,7 @@ func MergeHtml(pages [][]byte) []byte {
 	part := doc[:bytes.Index(doc, []byte("<head>")) + 6]
 	// write start file like "<!DOCTYPE html><head>" into buffer
 	buffer.Write(part)
+	buffer.WriteString("\n    ")
 	doc = doc[bytes.Index(doc, []byte("<title>")): bytes.Index(doc, []byte("</title>")) + 8]
 	// write the last title "<title>...</title>" into buffer
 	buffer.Write(doc)
@@ -194,12 +195,12 @@ type section struct {
 	tagLen int
 }
 
-func NewSection(page []byte, tag string) *section {
+func newSection(page []byte, tag string) *section {
 	return &section{page: page, tag: tag, tagLen: len(tag)}
 }
 
-func GetFirstSection(page []byte, tag string) (content []byte, attr map[string]string) {
-	s := NewSection(page, tag)
+func getFirstSection(page []byte, tag string) (content []byte, attr map[string]string) {
+	s := newSection(page, tag)
 	s.Next(func(tagContent []byte, att map[string]string) {
 		content = tagContent
 		attr = att
@@ -207,8 +208,8 @@ func GetFirstSection(page []byte, tag string) (content []byte, attr map[string]s
 	return
 }
 
-func GetFirstSectionWithTag(page []byte, tag string) (tagContent []byte) {
-	s := NewSection(page, tag)
+func getFirstSectionWithTag(page []byte, tag string) (tagContent []byte) {
+	s := newSection(page, tag)
 	s.NextWithTag(func(tag []byte) {
 		tagContent = tag
 	})
@@ -262,22 +263,54 @@ func (s *section) Next(success func(tagContent []byte, attr map[string]string)) 
 func getAttr(n []byte) (attr map[string]string) {
 
 	a := TrimHtmlSpace(n)
-	kvs := strings.Split(string(a), " ")
-	attr = make(map[string]string, len(kvs))
-	for _, kv := range kvs {
-		firstEq := strings.Index(kv, "=")
 
-		if firstEq == -1 {
-			attr[kv] = ""
+	attr = make(map[string]string)
+	left := a
+	var key, value []rune
+	for {
+		key, left = readKey(left)
+		if len(left) <= 1 {
+			attr[string(key)] = ""
+			return
+		}
+		value, left = readValue(left)
+		attr[string(key)] = string(value)
+		if len(left) <= 1 {
+			return
+		}
+	}
+
+	return
+}
+
+func readKey(s []rune) (key []rune, left []rune) {
+	if s[0] == ' ' { // cut the first space
+		s = s[1:]
+	}
+	for _, b := range s {
+		if b == '=' || b == ' ' {
+			left = s[len(key):]
+			break
 		} else {
-			key := kv[:firstEq]
-			start := firstEq + 2 // ="..."
-			end := len(kv) - 1
-			if start < end {
-				val := kv[start: end]
-				attr[key] = val
+			key = append(key, rune(b))
+		}
+	}
+	return
+}
+
+func readValue(s []rune) (value []rune, left []rune) {
+	if len(s)>2 && string(s[0:2]) == `="` {
+		s = s[2:]
+		for _, b := range s {
+			if b == '"' {
+				left = s[len(value) + 1:] // cut the last `"`
+				break
+			} else {
+				value = append(value, rune(b))
 			}
 		}
+	} else {
+		left = s
 	}
 	return
 }
