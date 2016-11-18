@@ -87,7 +87,7 @@ func MergeHtml(pages [][]byte) []byte {
 		bodies[idx] = body
 
 		// get all script
-		ss := newSection(p[len(body) + len(head):], "script")
+		ss := newSection(p[bytes.LastIndex(p, []byte("</body>")):], "script")
 		for ss.NextWithTag(func(tagContent []byte) {
 			scripts[idx] = append(scripts[idx], tagContent)
 		}) {}
